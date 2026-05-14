@@ -1,4 +1,4 @@
-# Datatables (one-time setup)
+# Marc Datatables (one-time setup)
 
 Create these as SDL datatables. Field types are guidance; adjust to your tenant.
 
