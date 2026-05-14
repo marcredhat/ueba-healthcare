@@ -15,7 +15,7 @@ let base =
     | parse '"record_count": $record_count{regex=[0-9]+}$' from message
     | group
         dt_events              = count( event_cat == "data_transfer" ),
-        dt_failures            = count( event_cat == "data_transfer" and outcome == "failure" ),
+        dt_failures            = count( event_cat == "data_transfer" && outcome == "failure" ),
         export_initiated       = count( event_type == "DATA_EXPORT_INITIATED" ),
         export_completed       = count( event_type == "DATA_EXPORT_COMPLETED" ),
         import_initiated       = count( event_type == "DATA_IMPORT_INITIATED" ),
@@ -32,7 +32,7 @@ let base =
     | filter entity_id = *
   );
 
-union
+| union
   ( base | columns entity_id, hour_ts, feature_name = "dt_events",              value = dt_events ),
   ( base | columns entity_id, hour_ts, feature_name = "dt_failures",            value = dt_failures ),
   ( base | columns entity_id, hour_ts, feature_name = "export_initiated",       value = export_initiated ),
@@ -47,6 +47,6 @@ union
   ( base | columns entity_id, hour_ts, feature_name = "print_jobs",             value = print_jobs ),
   ( base | columns entity_id, hour_ts, feature_name = "total_records_exported", value = total_records_exported ),
   ( base | columns entity_id, hour_ts, feature_name = "external_destinations",  value = external_destinations )
-| extend entity_type = "user", family = "cloud"
+| let entity_type = "user", family = "cloud"
 | columns entity_type, entity_id, hour_ts, family, feature_name, value
 | savelookup 'ueba_features_hourly', 'merge'

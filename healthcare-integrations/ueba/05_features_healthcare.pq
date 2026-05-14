@@ -16,7 +16,7 @@ let base =
     | parse '"attempts_remaining": $attempts_remaining{regex=[0-9]+}$' from message
     | group
         card_events            = count( event_cat == "card_operations" ),
-        card_failures          = count( event_cat == "card_operations" and outcome == "failure" ),
+        card_failures          = count( event_cat == "card_operations" && outcome == "failure" ),
         card_read_success      = count( event_type == "CARD_READ_SUCCESS" ),
         card_read_failure      = count( event_type == "CARD_READ_FAILURE" ),
         card_pin_verified      = count( event_type == "CARD_PIN_VERIFIED" ),
@@ -30,15 +30,15 @@ let base =
         smcb_events            = count( card_type == "SMC-B" ),
         hba_events             = count( card_type == "HBA" ),
         qes_pin_attempts       = count( pin_type == "PIN.QES" ),
-        low_attempts_remaining = count( attempts_remaining == 1 or attempts_remaining == 0 )
+        low_attempts_remaining = count( attempts_remaining == 1 || attempts_remaining == 0 )
       by hour_ts = timebucket('1 hour'), entity_id
     | filter entity_id = *
-    | filter( card_events > 0 )
-    | extend
-        card_failure_ratio = if( card_events > 0, 1.0 * card_failures / card_events, 0.0 )
+    | filter card_events > 0
+    | let
+        card_failure_ratio = card_events > 0 ? (1.0 * card_failures / card_events) : 0.0
   );
 
-union
+| union
   ( base | columns entity_id, hour_ts, feature_name = "card_events",            value = card_events ),
   ( base | columns entity_id, hour_ts, feature_name = "card_failures",          value = card_failures ),
   ( base | columns entity_id, hour_ts, feature_name = "card_failure_ratio",     value = card_failure_ratio ),
@@ -56,6 +56,6 @@ union
   ( base | columns entity_id, hour_ts, feature_name = "hba_events",             value = hba_events ),
   ( base | columns entity_id, hour_ts, feature_name = "qes_pin_attempts",       value = qes_pin_attempts ),
   ( base | columns entity_id, hour_ts, feature_name = "low_attempts_remaining", value = low_attempts_remaining )
-| extend entity_type = "host", family = "healthcare"
+| let entity_type = "host", family = "healthcare"
 | columns entity_type, entity_id, hour_ts, family, feature_name, value
 | savelookup 'ueba_features_hourly', 'merge'

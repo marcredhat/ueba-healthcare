@@ -4,6 +4,11 @@ Discovered while building the UEBA pack. Treat as the canonical "rules" for
 authoring new PQs in this tenant.
 
 ## Functions / syntax
+- **`extend` does NOT exist** — use `| let col = expr` (one or more comma-separated assignments per `let`). This is the single most common author error. Confirmed via `references/syntax-and-operators.md` and `references/commands-reference.md` in the `sentinelone-powerquery` skill.
+- **`if(cond, a, b)` is NOT supported** — use the ternary `cond ? a : b` (spaces around `:` are required; the colon would otherwise be parsed as part of an identifier).
+- **`case(c1, v1, c2, v2, default)` is NOT supported** — chain ternaries: `c1 ? v1 : c2 ? v2 : default`.
+- **`isnotnull(x)` is NOT supported** — use `x = *` (means "is not null"). Conversely `!(x = *)` is "is null".
+- **Persistence primitives**: write with `| savelookup '<name>'[, 'merge']`; read with `dataset 'config://datatables/<name>'` or `| lookup col, … from <name> by key = expr`. `writeto datatable(...)` and `datatable("...")` do **not** exist.
 - **Hour bucket**: use `timebucket('1 hour')` in `group ... by hour_ts = timebucket('1 hour'), ...`. `bin(timestamp, 1h)` is **not** supported.
 - **Conditional count**: `count(condition)`. `countif(condition)` is **not** supported and causes HTTP 500.
 - **Conditional sum**: `sum(field)` works. `sum(if(cond, field, 0))` **causes 500** — split into a second metric or pre-aggregate.

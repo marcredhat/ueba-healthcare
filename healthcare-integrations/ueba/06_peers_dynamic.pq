@@ -18,7 +18,7 @@
 // ===========================================================================
 let user_peers =
   (
-    | filter( class_uid == 3002 or class_uid == 4001 )
+    | filter( class_uid == 3002 || class_uid == 4001 )
     | parse '"username": "$entity_id{regex=[^"]+}$"'    from message
     | parse '"role": "$role{regex=[^"]+}$"'             from message
     | parse '"hospital_id": "$hospital{regex=[^"]+}$"'  from message
@@ -42,7 +42,7 @@ let user_peers =
 // ===========================================================================
 let host_peers =
   (
-    | filter( class_uid == 3002 or class_uid == 4001 )
+    | filter( class_uid == 3002 || class_uid == 4001 )
     | parse '"hostname": "$entity_id{regex=[^"]+}$"'       from message
     | parse '"location": "$loc{regex=[^"]+}$"'             from message
     | parse '"event_category": "$event_cat{regex=[^"]+}$"' from message
@@ -62,5 +62,5 @@ let host_peers =
 // ===========================================================================
 // COMBINE + WRITE
 // ===========================================================================
-union user_peers, host_peers
+| union user_peers, host_peers
 | savelookup 'ueba_peer_membership'

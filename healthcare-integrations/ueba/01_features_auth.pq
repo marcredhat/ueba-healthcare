@@ -29,16 +29,17 @@ let base =
         password_change       = count( event_type == "PASSWORD_CHANGE" ),
         password_reset_req    = count( event_type == "PASSWORD_RESET_REQUEST" ),
         account_locked        = count( event_type == "ACCOUNT_LOCKED" ),
-        account_unlocked_fail = count( event_type == "ACCOUNT_UNLOCKED" and outcome == "failure" )
+        account_unlocked_fail = count( event_type == "ACCOUNT_UNLOCKED" && outcome == "failure" )
       by hour_ts = timebucket('1 hour'), entity_id
     | filter entity_id = *
-    | extend
-        auth_fail_ratio = if( auth_total > 0, 1.0 * auth_fail / auth_total, 0.0 ),
-        mfa_fail_ratio  = if( (mfa_success + mfa_failure) > 0,
-                              1.0 * mfa_failure / (mfa_success + mfa_failure), 0.0 )
+    | let
+        auth_fail_ratio = auth_total > 0 ? (1.0 * auth_fail / auth_total) : 0.0 ,
+        mfa_fail_ratio  = (mfa_success + mfa_failure) > 0
+                            ? (1.0 * mfa_failure / (mfa_success + mfa_failure))
+                            : 0.0
   );
 
-union
+| union
   ( base | columns entity_id, hour_ts, feature_name = "auth_total",            value = auth_total            ),
   ( base | columns entity_id, hour_ts, feature_name = "auth_fail",             value = auth_fail             ),
   ( base | columns entity_id, hour_ts, feature_name = "auth_succ",             value = auth_succ             ),
@@ -54,6 +55,6 @@ union
   ( base | columns entity_id, hour_ts, feature_name = "password_reset_req",    value = password_reset_req    ),
   ( base | columns entity_id, hour_ts, feature_name = "account_locked",        value = account_locked        ),
   ( base | columns entity_id, hour_ts, feature_name = "account_unlocked_fail", value = account_unlocked_fail )
-| extend entity_type = "user", family = "auth"
+| let entity_type = "user", family = "auth"
 | columns entity_type, entity_id, hour_ts, family, feature_name, value
 | savelookup 'ueba_features_hourly', 'merge'

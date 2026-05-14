@@ -13,7 +13,7 @@ let base =
     | parse '"severity": "$severity{regex=[^"]+}$"'        from message
     | group
         ti_events              = count( event_cat == "ti_connection" ),
-        ti_failures            = count( event_cat == "ti_connection" and outcome == "failure" ),
+        ti_failures            = count( event_cat == "ti_connection" && outcome == "failure" ),
         konnektor_connected    = count( event_type == "KONNEKTOR_CONNECTED" ),
         konnektor_disconnected = count( event_type == "KONNEKTOR_DISCONNECTED" ),
         konnektor_health_check = count( event_type == "KONNEKTOR_HEALTH_CHECK" ),
@@ -24,15 +24,15 @@ let base =
         cert_valid             = count( event_type == "CERTIFICATE_VALID" ),
         ti_service_unavailable = count( event_type == "TI_SERVICE_UNAVAILABLE" ),
         ti_service_available   = count( event_type == "TI_SERVICE_AVAILABLE" ),
-        high_sev_events        = count( event_cat == "ti_connection" and (severity == "HIGH" or severity == "CRITICAL") )
+        high_sev_events        = count( event_cat == "ti_connection" && (severity == "HIGH" || severity == "CRITICAL") )
       by hour_ts = timebucket('1 hour'), entity_id
     | filter entity_id = *
-    | extend
+    | let
         konnektor_flap_score = konnektor_disconnected + vpn_tunnel_failed,
-        ti_failure_ratio     = if( ti_events > 0, 1.0 * ti_failures / ti_events, 0.0 )
+        ti_failure_ratio     = ti_events > 0 ? (1.0 * ti_failures / ti_events) : 0.0
   );
 
-union
+| union
   ( base | columns entity_id, hour_ts, feature_name = "ti_events",              value = ti_events ),
   ( base | columns entity_id, hour_ts, feature_name = "ti_failures",            value = ti_failures ),
   ( base | columns entity_id, hour_ts, feature_name = "ti_failure_ratio",       value = ti_failure_ratio ),
@@ -48,6 +48,6 @@ union
   ( base | columns entity_id, hour_ts, feature_name = "ti_service_unavailable", value = ti_service_unavailable ),
   ( base | columns entity_id, hour_ts, feature_name = "ti_service_available",   value = ti_service_available ),
   ( base | columns entity_id, hour_ts, feature_name = "high_sev_events",        value = high_sev_events )
-| extend entity_type = "host", family = "network"
+| let entity_type = "host", family = "network"
 | columns entity_type, entity_id, hour_ts, family, feature_name, value
 | savelookup 'ueba_features_hourly', 'merge'

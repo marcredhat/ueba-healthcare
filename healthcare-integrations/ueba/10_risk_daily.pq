@@ -18,13 +18,13 @@ let today_d = bin(now(), 1d);
 
 let today_family_daily =
   dataset 'config://datatables/ueba_family_scores_hourly'
-  | filter hour_ts >= today_d - 1d and hour_ts < today_d
+  | filter hour_ts >= today_d - 1d && hour_ts < today_d
   | group entity_type, entity_id, family by
       family_daily = percentile(family_score, 95);
 
 let today_risk =
   today_family_daily
-  | extend w = weights[family]
+  | let w = weights[family]
   | group entity_type, entity_id by today_risk = sum(family_daily * todouble(w));
 
 let yday_risk =
@@ -34,8 +34,8 @@ let yday_risk =
 
 today_risk
 | join kind=leftouter yday_risk on entity_type, entity_id
-| extend decayed = coalesce(yday_score, 0.0) * exp(-0.01444 * 24.0)
-| extend score   = max_of(today_risk, decayed)
-| extend date    = today_d
+| let decayed = coalesce(yday_score, 0.0) * exp(-0.01444 * 24.0)
+| let score   = max_of(today_risk, decayed)
+| let date    = today_d
 | project entity_type, entity_id, date, score
 | savelookup 'ueba_entity_risk', 'merge'

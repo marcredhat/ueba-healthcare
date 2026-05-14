@@ -5,7 +5,7 @@
 let peers = dataset 'config://datatables/ueba_peer_membership';
 
 dataset 'config://datatables/ueba_features_hourly'
-| filter hour_ts between (now() - 29d) and (now() - 1d)
+| filter hour_ts between (now() - 29d) && (now() - 1d)
 | join kind=inner peers on entity_type, entity_id
 | group peer_id, feature_name by
     mu     = avg(value),
@@ -15,6 +15,6 @@ dataset 'config://datatables/ueba_features_hourly'
     q99    = percentile(value, 99),
     n      = count()
 | filter n >= 24 * 14
-| extend updated_at = now()
+| let updated_at = now()
 | project peer_id, feature_name, mu, sigma, median, q90, q99, n, updated_at
 | savelookup 'ueba_baselines_peer'

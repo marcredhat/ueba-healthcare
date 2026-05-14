@@ -1,7 +1,7 @@
 // 09_scoring.pq
 // Hourly anomaly scoring.
 // Combines self z-score, peer z-score, quantile breaches, watchlist multiplier.
-// Outputs per-(entity, hour, family) family_score and feature contributions.
+// Outputs per-(entity, hour, family) family_score && feature contributions.
 
 let features  = dataset 'config://datatables/ueba_features_hourly'
                 | filter hour_ts >= now() - 2h;     // last 2 hours, idempotent re-runs
@@ -19,12 +19,12 @@ let scored =
   | join kind=leftouter peers on entity_type, entity_id
   | join kind=leftouter base_p on peer_id, feature_name
   | rename mu_peer=mu1, sigma_peer=sigma1, q99_peer=q99_1
-  | extend
-      z_self        = if(coalesce(sigma, 0.0) > 0, (value - mu) / sigma, 0.0),
-      z_peer        = if(coalesce(sigma_peer, 0.0) > 0, (value - mu_peer) / sigma_peer, 0.0),
-      over_q99      = if(coalesce(q99, -1.0) >= 0 and value > q99, 1.0, 0.0),
-      over_q99_peer = if(coalesce(q99_peer, -1.0) >= 0 and value > q99_peer, 1.0, 0.0)
-  | extend
+  | let
+      z_self        = coalesce(sigma, 0.0) > 0 ? ((value - mu) / sigma) : 0.0 ,
+      z_peer        = coalesce(sigma_peer, 0.0) > 0 ? ((value - mu_peer) / sigma_peer) : 0.0 ,
+      over_q99      = (coalesce(q99, -1.0) >= 0 && value > q99) ? 1.0 : 0.0 ,
+      over_q99_peer = (coalesce(q99_peer, -1.0) >= 0 && value > q99_peer) ? 1.0 : 0.0
+  | let
       // robust feature score (0..~10 typical)
       feature_score =
           max_of(abs(z_self), abs(z_peer)) +
@@ -32,10 +32,12 @@ let scored =
           1.5 * over_q99_peer
   // Suppress service accounts unless extreme
   | join kind=leftouter svc on entity_type, entity_id
-  | extend feature_score = if(isnotnull(type) and feature_score < 6.0, 0.0, feature_score)
+  | let feature_score_sup = (type = * && feature_score < 6.0) ? 0.0 : feature_score
+  | let feature_score = feature_score_sup
   // Watchlist multiplier
   | join kind=leftouter watch on entity_type, entity_id
-  | extend feature_score = feature_score * coalesce(weight, 1.0)
+  | let feature_score_w = feature_score * coalesce(weight, 1.0)
+  | let feature_score   = feature_score_w
   | project entity_type, entity_id, hour_ts, family, feature_name,
             value, mu, sigma, q99, mu_peer, sigma_peer, q99_peer,
             z_self, z_peer, over_q99, over_q99_peer, feature_score, peer_id;
@@ -58,7 +60,7 @@ let family_scores =
 
 // Normalize to 0..100 (cap)
 family_scores
-| extend family_score_100 = min_of(100.0, family_score * 10.0)
+| let family_score_100 = min_of(100.0, family_score * 10.0)
 | project entity_type, entity_id, hour_ts, family,
           family_score = family_score_100, top_features
 | savelookup 'ueba_family_scores_hourly', 'merge'

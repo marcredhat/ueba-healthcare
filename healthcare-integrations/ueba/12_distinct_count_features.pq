@@ -42,7 +42,7 @@ let auth_distinct_src_host =
 // =========================================================================
 let host_distinct_users =
   (
-    | filter( class_uid == 3002 or class_uid == 4001 )
+    | filter( class_uid == 3002 || class_uid == 4001 )
     | parse '"hostname": "$entity_id{regex=[^"]+}$"' from message
     | parse '"username": "$v{regex=[^"]+}$"'         from message
     | group inner_n = count() by hour_ts = timebucket('1 hour'), entity_id, v
@@ -55,7 +55,7 @@ let host_distinct_users =
 
 let host_distinct_etypes =
   (
-    | filter( class_uid == 3002 or class_uid == 4001 )
+    | filter( class_uid == 3002 || class_uid == 4001 )
     | parse '"hostname": "$entity_id{regex=[^"]+}$"' from message
     | parse '"event_type": "$v{regex=[^"]+}$"'       from message
     | group inner_n = count() by hour_ts = timebucket('1 hour'), entity_id, v
@@ -183,7 +183,7 @@ let host_distinct_card_types =
 // =========================================================================
 // UNION + WRITE
 // =========================================================================
-union
+| union
   auth_distinct_src_ip,
   auth_distinct_src_host,
   host_distinct_users,
