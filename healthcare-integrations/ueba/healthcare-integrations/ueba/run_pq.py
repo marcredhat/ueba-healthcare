@@ -48,59 +48,104 @@ def strip_comments(pq: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _extract_paren_groups(text: str) -> list:
+    """Return a list of (start_idx, end_idx, body, depth) for every balanced
+    paren group in `text`. depth is 1 for outermost, 2 for nested inside,..."""
+    groups = []
+    stack = []  # list of (start_idx, depth_at_open)
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "(":
+            stack.append(i)
+            depth += 1
+        elif ch == ")" and stack:
+            start = stack.pop()
+            this_depth = depth
+            depth -= 1
+            groups.append((start, i, text[start + 1 : i], this_depth))
+    return groups
+
+
+def _find_enclosing_parens(text: str, idx: int) -> tuple:
+    """Walk backward from idx to find unmatched `(`, then forward to find its
+    matching `)`. Returns (open_idx, close_idx) or (None, None)."""
+    # walk back
+    depth = 0
+    open_idx = None
+    for i in range(idx, -1, -1):
+        ch = text[i]
+        if ch == ")":
+            depth += 1
+        elif ch == "(":
+            if depth == 0:
+                open_idx = i
+                break
+            depth -= 1
+    if open_idx is None:
+        return None, None
+    # walk forward
+    depth = 0
+    close_idx = None
+    for i in range(open_idx, len(text)):
+        ch = text[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                close_idx = i
+                break
+    return open_idx, close_idx
+
+
 def split_into_branches(pq_text: str) -> list:
     """
-    Feature-extractor file shape:
-        | union
-        (                          <- outer paren at col 0
-            (  <leaf1 pipeline>  ),  <- leaf at col 4 (indent 4)
-            (  <leaf2 pipeline>  ),
-            ...
-            (  <leafK pipeline>  )
-        ),
-        (
-            (  <leafK+1>  ),
-            ...
-            (  <leafN>  )
-        )
-        | let entity_type = ..., family = ...   <- post-union tail
-        | columns entity_type, entity_id, hour_ts, family, feature_name, value
-        | savelookup 'ueba_features_hourly', 'merge'
-
-    For each leaf branch we emit:  <leaf body> + <post-union tail>
-
-    Returns list of complete queries, each <15,000 chars.
+    Extract leaf branches by anchoring on `| group`. Each feature-extractor
+    leaf branch contains exactly one `| group` clause, so we walk outward
+    from each `| group` occurrence to find its enclosing `(...)` paren pair
+    — that's the leaf. We append the file's post-union tail to each leaf
+    so the result is a complete standalone query.
     """
     import re
     text = strip_comments(pq_text)
 
-    # The post-union tail starts at the line after the FINAL closing paren
-    # (which sits at column 0). Locate it.
-    lines = text.split("\n")
-    last_close = None
-    for i, ln in enumerate(lines):
-        if ln == ")":
-            last_close = i
-    if last_close is None:
-        # Some files (e.g. 12) terminate the outermost union with `)`
-        # possibly without a tail; fall back: tail is just savelookup.
-        sl = re.search(r'\|\s*savelookup\s+[^\n]+', text)
-        tail = sl.group(0) if sl else ""
-    else:
-        tail = "\n".join(lines[last_close + 1 :]).strip()
+    # Identify post-union tail: everything from the last `)` before a
+    # savelookup/let/columns at the bottom of the file, to end of text.
+    sl_match = None
+    for m in re.finditer(r'\n\s*\|\s*(savelookup|let|columns)\b', text):
+        sl_match = m  # keep last
+    tail = ""
+    if sl_match:
+        before = text[: sl_match.start()]
+        last_close = before.rfind(")")
+        if last_close != -1:
+            tail = text[last_close + 1:].strip()
 
-    # Extract every col-4 leaf paren group:  `^    (` ... `^    )`
+    # For each `| group` find the enclosing paren pair; dedupe by open index.
+    leaves = {}
+    for m in re.finditer(r'\|\s*group\b', text):
+        open_i, close_i = _find_enclosing_parens(text, m.start())
+        if open_i is None or close_i is None:
+            continue
+        leaves[open_i] = (open_i, close_i, text[open_i + 1 : close_i])
+
     branches = []
-    pattern = re.compile(r'^    \(\n(.*?)\n    \)', re.M | re.S)
-    for m in pattern.finditer(text):
-        body = m.group(1)
-        # Dedent body (each line is +6 spaces for leaves inside a col-4 paren)
-        body = "\n".join(ln[6:] if ln.startswith("      ") else ln for ln in body.splitlines())
-        body = body.strip()
+    for open_i in sorted(leaves):
+        _, _, body = leaves[open_i]
+        # Skip if body itself contains `| union` (we got a wrapper, not a leaf)
+        if re.search(r'\|\s*union\b', body):
+            continue
+        # Dedent
+        lines = body.splitlines()
+        non_blank = [ln for ln in lines if ln.strip()]
+        if not non_blank:
+            continue
+        min_indent = min(len(ln) - len(ln.lstrip(" ")) for ln in non_blank)
+        body = "\n".join(
+            (ln[min_indent:] if len(ln) >= min_indent else ln) for ln in lines
+        ).strip()
         if not body:
             continue
-        # Each branch is already a complete pipeline; leave the leading filter
-        # expression bare (the API accepts that). Append the tail unchanged.
         query = body
         if tail:
             query = f"{body}\n{tail}"

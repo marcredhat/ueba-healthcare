@@ -72,6 +72,31 @@ canonical "rules" for authoring new PQs in this tenant.
 - **String empty filter**: `| filter col != ""`.
 - **`strlen(col)` is not supported**.
 
+## Aliasing, subqueries, joins (recent additions)
+
+- **Column aliasing**: `| columns NewName = expr, Other = other_expr` selects
+  AND renames in one step. `| let new_field = expression` adds a derived
+  column without selecting away anything.
+- **Subquery for single-field matching**: SQL `IN (subq)` becomes
+  `field in (filter_expr | commands)`. The inner query MUST output a column
+  with the same name as the outer field. Example:
+  ```powerquery
+  user in (threat_level < 4 | group 1 by user)
+  | group count() by action
+  ```
+- **Subquery restrictions**: cannot be used after `group`, `sort`, or
+  `limit`; only one matching field. For multi-field correlation use `join`.
+- **Named join inputs** (closest thing to subquery aliasing):
+  ```powerquery
+  | join left_q  = (src.ip = * | group count() by src.ip),
+         right_q = (dst.ip = * | group count() by dst.ip)
+    on src.ip = dst.ip
+  ```
+  This means files 09–11 *can* be expressed natively in PowerQuery using
+  named joins instead of `let X = (subquery)`. We chose Python in this
+  pack for reliability across query body limits, but a future refactor
+  could move scoring back to SDL using this pattern.
+
 ## What works (verified end-to-end)
 
 ```powerquery
