@@ -2,7 +2,7 @@
 // Nightly per-entity baselines over the last 28 days.
 // Requires >= 14 days of hourly samples per feature to be considered stable.
 
-datatable("ueba_features_hourly")
+dataset 'config://datatables/ueba_features_hourly'
 | filter hour_ts between (now() - 29d) and (now() - 1d)
 | group entity_type, entity_id, feature_name by
     mu     = avg(value),
@@ -15,4 +15,4 @@ datatable("ueba_features_hourly")
 | extend updated_at = now()
 | project entity_type, entity_id, feature_name,
           mu, sigma, median, q90, q99, n, updated_at
-| writeto datatable("ueba_baselines_entity", mode="replace")
+| savelookup 'ueba_baselines_entity'

@@ -22,6 +22,12 @@ gematik Telematik Infrastruktur, SMC-B/HBA cards, Konnektor, HL7/FHIR).
 > Files 07–11 use only standard SDL primitives and the verified patterns from
 > `SDL_POWERQUERY_QUIRKS.md`; rename fields if your tenant differs.
 
+> **Persistence:** all reads use `dataset 'config://datatables/<name>'` and all
+> writes use `| savelookup '<name>'[, 'merge']`. See `PRODUCTION_RECIPE.md` for
+> the Hyperautomation schedule, table-size limits (≤100 000 rows / 1.5 MB per
+> `savelookup`), the sharded-by-family layout, and the inline STAR alert rule
+> body for productionising file 09.
+
 ## Tenant schema notes
 
 This tenant emits OCSF `class_uid` but the OCSF nested paths (`actor.user.name`,

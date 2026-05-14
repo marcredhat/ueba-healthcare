@@ -2,9 +2,9 @@
 // Nightly per-peer baselines over the last 28 days.
 // Joins ueba_features_hourly with current ueba_peer_membership.
 
-let peers = datatable("ueba_peer_membership");
+let peers = dataset 'config://datatables/ueba_peer_membership';
 
-datatable("ueba_features_hourly")
+dataset 'config://datatables/ueba_features_hourly'
 | filter hour_ts between (now() - 29d) and (now() - 1d)
 | join kind=inner peers on entity_type, entity_id
 | group peer_id, feature_name by
@@ -17,4 +17,4 @@ datatable("ueba_features_hourly")
 | filter n >= 24 * 14
 | extend updated_at = now()
 | project peer_id, feature_name, mu, sigma, median, q90, q99, n, updated_at
-| writeto datatable("ueba_baselines_peer", mode="replace")
+| savelookup 'ueba_baselines_peer'

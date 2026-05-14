@@ -195,4 +195,4 @@ union
   host_distinct_cards,
   host_distinct_terminals,
   host_distinct_card_types
-| writeto datatable("ueba_features_hourly", mode="append")
+| savelookup 'ueba_features_hourly', 'merge'

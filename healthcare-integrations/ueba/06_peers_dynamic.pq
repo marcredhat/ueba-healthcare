@@ -63,4 +63,4 @@ let host_peers =
 // COMBINE + WRITE
 // ===========================================================================
 union user_peers, host_peers
-| writeto datatable("ueba_peer_membership", mode="replace")
+| savelookup 'ueba_peer_membership'

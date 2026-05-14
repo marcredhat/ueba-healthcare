@@ -3,14 +3,14 @@
 // Combines self z-score, peer z-score, quantile breaches, watchlist multiplier.
 // Outputs per-(entity, hour, family) family_score and feature contributions.
 
-let features  = datatable("ueba_features_hourly")
+let features  = dataset 'config://datatables/ueba_features_hourly'
                 | filter hour_ts >= now() - 2h;     // last 2 hours, idempotent re-runs
-let base_e    = datatable("ueba_baselines_entity");
-let base_p    = datatable("ueba_baselines_peer");
-let peers     = datatable("ueba_peer_membership");
-let watch     = datatable("ueba_watchlist")
+let base_e    = dataset 'config://datatables/ueba_baselines_entity';
+let base_p    = dataset 'config://datatables/ueba_baselines_peer';
+let peers     = dataset 'config://datatables/ueba_peer_membership';
+let watch     = dataset 'config://datatables/ueba_watchlist'
                 | filter coalesce(valid_to, now() + 365d) >= now();
-let svc       = datatable("ueba_service_accounts");
+let svc       = dataset 'config://datatables/ueba_service_accounts';
 
 let scored =
   features
@@ -61,4 +61,4 @@ family_scores
 | extend family_score_100 = min_of(100.0, family_score * 10.0)
 | project entity_type, entity_id, hour_ts, family,
           family_score = family_score_100, top_features
-| writeto datatable("ueba_family_scores_hourly", mode="append")
+| savelookup 'ueba_family_scores_hourly', 'merge'

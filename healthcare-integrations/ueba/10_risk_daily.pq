@@ -17,7 +17,7 @@ let weights = pack_dict(
 let today_d = bin(now(), 1d);
 
 let today_family_daily =
-  datatable("ueba_family_scores_hourly")
+  dataset 'config://datatables/ueba_family_scores_hourly'
   | filter hour_ts >= today_d - 1d and hour_ts < today_d
   | group entity_type, entity_id, family by
       family_daily = percentile(family_score, 95);
@@ -28,7 +28,7 @@ let today_risk =
   | group entity_type, entity_id by today_risk = sum(family_daily * todouble(w));
 
 let yday_risk =
-  datatable("ueba_entity_risk")
+  dataset 'config://datatables/ueba_entity_risk'
   | filter date == (today_d - 1d)
   | project entity_type, entity_id, yday_score = score;
 
@@ -38,4 +38,4 @@ today_risk
 | extend score   = max_of(today_risk, decayed)
 | extend date    = today_d
 | project entity_type, entity_id, date, score
-| writeto datatable("ueba_entity_risk", mode="append")
+| savelookup 'ueba_entity_risk', 'merge'

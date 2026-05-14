@@ -50,4 +50,4 @@ union
   ( base | columns entity_id, hour_ts, feature_name = "high_sev_events",        value = high_sev_events )
 | extend entity_type = "host", family = "network"
 | columns entity_type, entity_id, hour_ts, family, feature_name, value
-| writeto datatable("ueba_features_hourly", mode="append")
+| savelookup 'ueba_features_hourly', 'merge'

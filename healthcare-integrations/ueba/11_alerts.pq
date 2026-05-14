@@ -9,7 +9,7 @@ let today_d = bin(now(), 1d);
 
 // (a) Family-level hourly anomalies
 let family_alerts =
-  datatable("ueba_family_scores_hourly")
+  dataset 'config://datatables/ueba_family_scores_hourly'
   | filter hour_ts >= now() - 2h
   | filter family_score > 90
   | extend
@@ -31,7 +31,7 @@ let family_alerts =
 
 // (b) Entity-level daily risk
 let risk_alerts =
-  datatable("ueba_entity_risk")
+  dataset 'config://datatables/ueba_entity_risk'
   | filter date == today_d and score > 70
   | extend
       alert_id    = strcat("risk-", tostring(date), "-", entity_type, "-", entity_id),
@@ -50,4 +50,4 @@ let risk_alerts =
             score, explanation, status;
 
 union family_alerts, risk_alerts
-| writeto datatable("ueba_alerts", mode="append")
+| savelookup 'ueba_alerts', 'merge'
