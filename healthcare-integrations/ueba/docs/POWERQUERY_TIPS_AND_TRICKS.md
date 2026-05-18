@@ -1,10 +1,10 @@
 # SentinelOne SDL PowerQuery — tips, tricks, and verified best practices
 
 Practical lessons learned building this UEBA pipeline against
-`xdr.us1.sentinelone.net`. Every entry below is **empirically
+`<your-tenant>.sentinelone.net`. Every entry below is **empirically
 verified**: each rule was confirmed by submitting test queries against
 `/api/powerQuery` and observing the parser's response. The pipeline at
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/`
+``
 follows every rule documented here and 90/90 inlined files
 parse-and-execute successfully on the tenant.
 
@@ -63,7 +63,7 @@ the bare-expression form without the pipe.
 
 **Workaround**: inline the base pipeline into each branch by hand (or
 by a build script). See the `_expand_let_base` function in
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/build_inlined_pq.py`
+`build_inlined_pq.py`
 for the automated transform. The source `.pq` files use the concise
 `let base = (...)` for readability; the build step emits inlined
 runnable copies into `inlined-pq/`.
@@ -102,7 +102,7 @@ HTTP 400  Join field 'entity_id' was not found in all subqueries
 **Fix**: pre-join the table that's missing a key with a lookup table
 that has it, then use the result as a single named input. Example
 from
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/09_scoring.pq`:
+`09_scoring.pq`:
 
 ```
 peer_baselines = (
@@ -136,7 +136,7 @@ HTTP 400  undefined field 'day'
 ```
 
 **Fix**: reference as `<input_name>.day`. From
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/10_risk_daily.pq`:
+`10_risk_daily.pq`:
 
 ```
 | let date = today.day = null ? yday.day : today.day
@@ -226,7 +226,7 @@ the outer `group` counts the remaining distinct rows. The output is
 identical to a `dcount(v)` but doesn't trip the 500.
 
 See every feature in
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/12_distinct_count_features.pq`.
+`12_distinct_count_features.pq`.
 
 ---
 
@@ -340,7 +340,7 @@ This is **strict**. There is no way around it server-side.
 **Workaround**: split a multi-branch source into N independent
 single-branch `.pq` files, each writing to the same datatable with
 `| savelookup '<name>', 'merge'`. This is what
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/build_inlined_pq.py`
+`build_inlined_pq.py`
 does automatically.
 
 ---
@@ -480,7 +480,7 @@ When a query returns an unhelpful HTTP 400 like `Don't understand
    raw `(...)` content if you suspect named-input issues.
 4. **Check the build artifact**: the inlined version of each source
    `.pq` file lives at
-   `@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/inlined-pq/`.
+   `inlined-pq/`.
    What you actually submit is what's there, not the concise source.
 5. **Submit programmatically with `/api/powerQuery`**: the UI may
    silently rewrite or sanitize. The raw API surfaces the precise
@@ -493,14 +493,14 @@ When a query returns an unhelpful HTTP 400 like `Don't understand
 Every change to a `.pq` source must be followed by:
 
 ```
-python3 @/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/build_inlined_pq.py
-python3 @/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/validate_all.py
+python3 build_inlined_pq.py
+python3 validate_all.py
 ```
 
 The first rebuilds the inlined `.pq` artifacts; the second submits all
 90 to the tenant and reports per-file pass/fail. **The pipeline is
 considered correct only when `validate_all.py` reports 90/90 PASS**.
-Last verified: 2026-05-18, all 90 PASS on `xdr.us1.sentinelone.net`.
+Last verified: 2026-05-18, all 90 PASS on `<your-tenant>.sentinelone.net`.
 
 ---
 

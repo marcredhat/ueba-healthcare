@@ -8,7 +8,7 @@ import urllib3
 
 urllib3.disable_warnings()
 
-SDL_API_DIR = Path("/Users/marc.chisinevski/windsurf/shared/sentinelone-sdl-api")
+SDL_API_DIR = Path("./sentinelone-sdl-api")
 sys.path.insert(0, str(SDL_API_DIR / "scripts"))
 
 import sdl_client  # noqa: E402

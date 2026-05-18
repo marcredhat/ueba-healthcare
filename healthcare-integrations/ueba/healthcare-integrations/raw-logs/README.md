@@ -66,7 +66,7 @@ These three fields drive parser routing in SDL — they match exactly what
 | Field | Value |
 |---|---|
 | Destination type | **OpenTelemetry (OTLP/HTTP)** |
-| Endpoint | `https://xdr.us1.sentinelone.net/services/otlp/v1/logs` |
+| Endpoint | `https://<your-tenant>.sentinelone.net/services/otlp/v1/logs` |
 | Authentication | Bearer token (Log Write key) |
 | Header | `Authorization: Bearer <SDL_LOG_WRITE_KEY>` |
 | Compression | `gzip` |

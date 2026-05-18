@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify ueba_features_hourly was populated after running file 01."""
+import os
 import sys
 from pathlib import Path
 
@@ -8,7 +9,10 @@ import urllib3
 
 urllib3.disable_warnings()
 
-SDL_API_DIR = Path("/Users/marc.chisinevski/windsurf/shared/sentinelone-sdl-api")
+SDL_API_DIR = Path(os.environ.get(
+    "SDL_API_DIR",
+    str(Path(__file__).resolve().parents[2] / "sentinelone-sdl-api"),
+))
 sys.path.insert(0, str(SDL_API_DIR / "scripts"))
 
 import sdl_client  # noqa: E402

@@ -2,7 +2,7 @@
 
 This document explains the security rationale behind every feature
 family, every aggregation, and every alert produced by the
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/`
+``
 pipeline. It maps each technical artifact to a real-world threat
 scenario in a hospital, clinic, MVZ, KIM connector site, or other
 TI-connected (Telematikinfrastruktur) healthcare environment.
@@ -49,7 +49,7 @@ entity_id, hour_ts, family, feature_name, value)`. Six families
 collectively cover the OWASP / MITRE ATT&CK + healthcare-specific
 attack surface.
 
-### 2.1 `auth` (15 features) → `@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/01_features_auth.pq`
+### 2.1 `auth` (15 features) → `01_features_auth.pq`
 
 **Entity**: user. **Source**: OCSF `class_uid = 3002` (authentication events).
 
@@ -75,7 +75,7 @@ attack surface.
 aggregates blur the morning rush vs. night shift; hourly preserves
 the diurnal pattern that makes anomalies stand out.
 
-### 2.2 `endpoint` (9 features) → `@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/02_features_endpoint.pq`
+### 2.2 `endpoint` (9 features) → `02_features_endpoint.pq`
 
 **Entity**: host. **Source**: OCSF `class_uid = 4001` (endpoint events) + auth volume from class 3002 + healthcare-app events.
 
@@ -96,7 +96,7 @@ shows tight `host_events` distributions because the same clinician
 does the same workflow daily. Ransomware staging on that host
 typically multiplies `host_events` 5–10× — easy to detect with z-score.
 
-### 2.3 `network` (15 features) → `@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/03_features_network.pq`
+### 2.3 `network` (15 features) → `03_features_network.pq`
 
 **Entity**: TI-konnektor / network service. **Source**: TI
 (Telematikinfrastruktur) connector logs + VPN + certificate events.
@@ -124,7 +124,7 @@ Sicherheitsanforderungen).
 | `ti_service_unavailable` | Counts of unavailability; chronic = vendor escalation |
 | `high_sev_events` | High-severity network events; lateral-movement detection |
 
-### 2.4 `cloud` (14 features) → `@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/04_features_cloud.pq`
+### 2.4 `cloud` (14 features) → `04_features_cloud.pq`
 
 **Entity**: user. **Source**: PVS/HIS/ePA application logs — record
 imports/exports, FHIR API calls, HL7 traffic, printing, email
@@ -153,7 +153,7 @@ exports records.
 IT (PVS, HIS, ePA, FHIR-on-FHIR). Naming is loose; the family
 captures application-layer record movement.
 
-### 2.5 `healthcare` (17 features) → `@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/05_features_healthcare.pq`
+### 2.5 `healthcare` (17 features) → `05_features_healthcare.pq`
 
 **Entity**: user. **Source**: SMC-B (institution card), HBA
 (Heilberufsausweis, professional ID card), eGK (patient card)
@@ -181,7 +181,7 @@ infrastructure.
 | `low_attempts_remaining` | Card has ≤1 PIN attempt left — likely brute force in progress |
 | `qes_pin_attempts` | QES PIN attempts; usually 1-2/day, sudden 10+ = breach |
 
-### 2.6 `distinct counts` (11 features) → `@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/12_distinct_count_features.pq`
+### 2.6 `distinct counts` (11 features) → `12_distinct_count_features.pq`
 
 **Why these are special**: SDL's `dcount()` returns HTTP 500 on
 parse-extracted fields on this tenant, so we emulate it with a
@@ -207,7 +207,7 @@ attack signal.
 
 ## 3. Peer-grouped detection: not all clinicians are alike
 
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/06_peers_dynamic.pq`
+`06_peers_dynamic.pq`
 clusters entities into dynamic peer groups based on **observed
 behavior**, not org-chart attributes. Two clinicians in the same role
 who never touch the same systems are not actually peers.
@@ -227,7 +227,7 @@ yet.
 
 ## 4. The two-baseline architecture
 
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/07_baselines_entity.pq`
+`07_baselines_entity.pq`
 computes per-entity stats over the last 28 days (excluding the most
 recent 1 day, to prevent contamination):
 
@@ -236,7 +236,7 @@ recent 1 day, to prevent contamination):
 - `median`, `p90`, `p99`
 - `n` = sample count (must be ≥ 336 hourly samples ≈ 14 days)
 
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/08_baselines_peer.pq`
+`08_baselines_peer.pq`
 computes the same statistics over the entity's peer group.
 
 For each (entity, feature) at each hour we compute **both**:
@@ -255,15 +255,15 @@ rates in healthcare:
 The pipeline scores `feature_score = max(|z_self|, |z_peer|) + 1.5·over_q99 + 1.5·over_q99_peer`,
 giving a strong boost when the value exceeds the p99 threshold in
 either dimension. See
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/09_scoring.pq`.
+`09_scoring.pq`.
 
 ---
 
 ## 5. Family rollup and risk decay
 
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/09b_family_scores.pq`
+`09b_family_scores.pq`
 collapses per-feature scores to per-family p95s, then
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/10_risk_daily.pq`
+`10_risk_daily.pq`
 computes a weighted daily risk score:
 
 ```
@@ -295,7 +295,7 @@ attacker is quiet.
 
 ## 6. Alert generation
 
-`@/Users/marc.chisinevski/windsurf/shared/healthcare-integrations/ueba/11_alerts.pq`
+`11_alerts.pq`
 produces two alert types into `ueba_alerts`:
 
 1. **Sustained anomaly**: any single feature scores > 3.0 for ≥ 3 of

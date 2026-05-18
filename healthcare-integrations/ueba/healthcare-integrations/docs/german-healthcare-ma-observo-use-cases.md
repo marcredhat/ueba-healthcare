@@ -83,7 +83,7 @@ HIS NDJSON in S3  →  Observo
                        ├─ map event_category → category_uid / class_uid
                        ├─ map severity → severity_id (OCSF 0-6)
                        ├─ enrich: serverHost, parser, logfile (parser-routing keys)
-                       └─ ship via OTLP/HTTP to https://xdr.us1.sentinelone.net/services/otlp/v1/logs
+                       └─ ship via OTLP/HTTP to https://<your-tenant>.sentinelone.net/services/otlp/v1/logs
 ```
 **Outcome.** Acquirer's existing detections, dashboards (e.g. `/dashboards/bsi-nis2-healthcare-overview`), and threat-hunting playbooks work on Day 1 against the target's data — no SIEM-side rule rewriting.
 
@@ -220,4 +220,4 @@ A 30-minute customer demo can therefore tell the **full M&A story end-to-end**:
 6. **Evidence pack** generated for an injected `MALWARE_DETECTED` event (3.5).
 
 That is the same dashboard already deployed at
-`https://xdr.us1.sentinelone.net/#/dashboards/bsi-nis2-healthcare-overview`.
+`https://<your-tenant>.sentinelone.net/#/dashboards/bsi-nis2-healthcare-overview`.

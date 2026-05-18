@@ -54,7 +54,7 @@ python3 dashboards/deploy_dashboards.py
 
 After step 3, open in AI SIEM:
 **Visibility Enhanced → Dashboards → BSI / NIS2 healthcare compliance**
-or directly: `https://xdr.us1.sentinelone.net/#/dashboards/bsi-nis2-healthcare-overview`
+or directly: `https://<your-tenant>.sentinelone.net/#/dashboards/bsi-nis2-healthcare-overview`
 
 ## What gets deployed
 

@@ -55,7 +55,7 @@ Hand-off: "Let me walk you through the six moments where this pipeline pays for 
 
 **Steps.**
 1. Show Observo pipeline with **two destinations active**:
-   - **AI SIEM** (acquirer) via OTLP/HTTP → `https://xdr.us1.sentinelone.net/services/otlp/v1/logs`
+   - **AI SIEM** (acquirer) via OTLP/HTTP → `https://<your-tenant>.sentinelone.net/services/otlp/v1/logs`
    - **Microsoft Sentinel** (target) via Azure Monitor HTTP Data Collector
 2. Apply the **OCSF normalisation processor** (only on the AI SIEM branch):
    - `event_category=patient_access` → `class_uid=6001`, `category_uid=6`
