@@ -1,198 +1,118 @@
-# UEBA — Production Recipe (Hyperautomation + STAR Alerts)
+# UEBA Production Recipe
 
-Refactored to use the actual SDL primitives confirmed by the `pmoses-s1/claude-skills` repo and the local `sentinelone-powerquery` skill:
+This document tells you exactly how to populate every UEBA datatable in this
+tenant, from raw events to alerts. It supersedes the old plan that assumed
+Event-Search-only execution and `savelookup`-as-merge.
 
-- **Read** a persistent table: `dataset 'config://datatables/<name>'`
-- **Write** a persistent table (merge new rows): `| savelookup '<name>', 'merge'`
-- **Write** a persistent table (replace wholesale): `| savelookup '<name>'`
-- **Join** at read-time: `| lookup col, … from <name> by key = expr`
-
-Hard limits (from `sentinelone-powerquery/references/commands-reference.md`):
-
-| Limit | Value |
-|---|---|
-| Lookup table size when read via `lookup` | ≤ 400 KB |
-| `savelookup` target | ≤ 100 000 rows / 1.5 MB |
-| Array values in lookups | not supported |
-
-## 1. Nightly Hyperautomation workflow — feature materialisation
-
-Schedule one workflow that runs **01–05 and 12** in any order (they all `savelookup … merge` into the same table).
+## Architecture (verified)
 
 ```
-Workflow: "UEBA-Features-Nightly"
-Trigger:  cron "0 2 * * *" (02:00 local)
-
-Steps:
-  1. Run PowerQuery: 01_features_auth.pq
-  2. Run PowerQuery: 02_features_endpoint.pq
-  3. Run PowerQuery: 03_features_network.pq
-  4. Run PowerQuery: 04_features_cloud.pq
-  5. Run PowerQuery: 05_features_healthcare.pq
-  6. Run PowerQuery: 12_distinct_count_features.pq
+                                                          /api/putFile
+   raw events (class_uid=3002, 4001, …)                       ▲
+            │                                                 │
+   01–05 + 12  ─── run_pq_combined.py ───────────►  ueba_features_hourly
+   (per-feature READ calls, rows aggregated in Python)        │
+                                                              │
+   run_ueba_pipeline.py (reads each table via /api/getFile,   │
+                         writes via /api/putFile)             ▼
+                                          ueba_peer_membership
+                                          ueba_baselines_entity
+                                          ueba_baselines_peer
+                                          ueba_feature_scores_hourly
+                                          ueba_family_scores_hourly
+                                          ueba_entity_risk
+                                          ueba_alerts
 ```
 
-Each step ends with `| savelookup 'ueba_features_hourly', 'merge'`.
+All writes go through `/api/putFile` because `savelookup` on this tenant
+fully **replaces** the table contents on every call (no key-based upsert).
+The Python orchestrator collects multi-source rows in memory then writes
+the final payload once per datatable.
 
-### Sizing the table
+## Daily / hourly schedule
 
-The 100 000-row limit is real. With this tenant:
+| Cadence | Step | Command |
+|---------|------|---------|
+| Hourly  | Pull last hour's features | `python3 ueba/run_pq_combined.py --all --start 1h --table ueba_features_hourly` |
+| Hourly  | Score features, update family scores, risk, alerts | `python3 ueba/run_ueba_pipeline.py` |
+| Daily   | Rebuild peers (cheap; only 8 users so far) | `python3 ueba/run_ueba_pipeline.py --stage peers` |
+| Weekly  | Rebuild full 14-day baselines | `python3 ueba/run_ueba_pipeline.py --stage baselines && python3 ueba/run_ueba_pipeline.py --stage peer_baselines` |
 
+For Hyperautomation deployment: wrap each command in a small Python action
+that exits non-zero on `_http` errors, and chain them with `on_success`.
+
+## End-to-end smoke test
+
+```bash
+cd ueba
+
+# 1. Verify the API tenant + keys work
+python3 _test_query_shapes.py
+
+# 2. Populate features (writes /datatables/ueba_features_hourly)
+python3 run_pq_combined.py --all --start 24h
+
+# 3. Build everything downstream
+python3 run_ueba_pipeline.py
+
+# 4. Verify
+python3 verify_features.py
 ```
-~50 active entities × 24 hours × ~15 features/entity × 7 days ≈ 126 000 rows
-```
 
-Mitigations (pick one):
+Expected on the seeded synthetic data (24h window, 8 users, 13 hosts):
 
-- **Reduce TTL to 5 days** (truncate weekly with a `savelookup` of `dataset … | filter hour_ts >= now() - 5d`).
-- **Shard by family**: write `ueba_features_hourly_auth`, `_endpoint`, … Each ≤ 25 k rows.
-- **Daily roll-up**: keep last 24 h hourly, then aggregate to daily for the rest of the 28-day window (sufficient for baselines).
+- `ueba_features_hourly`            ~1,200 rows (15 features × ~80 user-hours)
+- `ueba_peer_membership`            ~20 rows
+- `ueba_baselines_entity`           ~100 rows
+- `ueba_baselines_peer`             ~60 rows
+- `ueba_feature_scores_hourly`      ~1,200 rows
+- `ueba_family_scores_hourly`       ~80 rows
+- `ueba_entity_risk`                ~10–20 rows
+- `ueba_alerts`                     0 (thresholds default to 90 / 70; synthetic
+                                       data is too uniform to trip them)
 
-Recommended start: **shard by family**. Each file 01–05/12 already knows its family; change the `savelookup` target accordingly:
+To validate the alert path end-to-end, lower the thresholds at the top of
+`run_ueba_pipeline.py` (`ALERT_FAMILY_THRESHOLD`, `ALERT_RISK_THRESHOLD`) or
+inject a row with a high score via `/api/putFile`.
 
-```diff
-- | savelookup 'ueba_features_hourly', 'merge'
-+ | savelookup 'ueba_features_hourly_<family>', 'merge'
-```
+## Key files
 
-And update files 07/08/09 to read the union of shards:
+| File | Purpose |
+|------|---------|
+| `01_features_auth.pq` … `05_features_healthcare.pq`, `12_distinct_count_features.pq` | Feature extractors. Authored as `| union (b1),(b2),… | tail` for readability. Executed branch-by-branch by `run_pq_combined.py`. |
+| `06_peers_dynamic.pq` | Legacy reference only. Peer logic now lives in `run_ueba_pipeline.py::stage_peers`. |
+| `07_baselines_entity.pq`, `08_baselines_peer.pq` | Legacy reference only. Baseline math is in Python (stable, no SDL quirks). |
+| `09_scoring.pq`, `10_risk_daily.pq`, `11_alerts.pq` | Legacy reference only. Implemented in Python — the SDL `join` + `let X = pipeline` chains required here are too tenant-fragile. |
+| `run_pq_combined.py` | Run a feature-extractor file: split union, READ each leaf, aggregate, write via putFile. |
+| `run_ueba_pipeline.py` | All downstream stages: peers, baselines, scoring, risk, alerts. |
+| `verify_features.py` | Sanity-check the populated `ueba_features_hourly` table. |
+| `SDL_POWERQUERY_QUIRKS.md` | All the gotchas, with verified examples. |
+
+## STAR / inline alert rule (optional, for tenant-side alerting)
+
+If you'd rather use SDL's native alerting on top of `ueba_alerts`:
 
 ```powerquery
-let features =
-  union
-    ( dataset 'config://datatables/ueba_features_hourly_auth' ),
-    ( dataset 'config://datatables/ueba_features_hourly_endpoint' ),
-    ( dataset 'config://datatables/ueba_features_hourly_network' ),
-    ( dataset 'config://datatables/ueba_features_hourly_cloud' ),
-    ( dataset 'config://datatables/ueba_features_hourly_healthcare' );
+| dataset 'config://datatables/ueba_alerts'
+| filter created_at >= now() - 1h
+| filter severity = "critical" || severity = "high"
+| columns alert_id, entity_type, entity_id, family, severity, score, explanation
 ```
 
-## 2. Nightly Hyperautomation workflow — baselines
+Schedule every 5 minutes, set the alert severity from the row's `severity`
+column, and route via the standard SDL alert sinks.
 
-```
-Workflow: "UEBA-Baselines-Nightly"
-Trigger:  cron "30 2 * * *"  (02:30 local, after features land)
+## Caveats
 
-Steps:
-  1. Run PowerQuery: 06_peers_dynamic.pq          # Mondays only (cron: 30 2 * * 1)
-  2. Run PowerQuery: 07_baselines_entity.pq       # replace, no merge
-  3. Run PowerQuery: 08_baselines_peer.pq         # replace, no merge
-```
-
-Files 07/08 use plain `savelookup '<name>'` (no `merge`) because baselines are recomputed wholesale every night.
-
-## 3. Hourly Hyperautomation workflow — risk & alerts
-
-```
-Workflow: "UEBA-Risk-Hourly"
-Trigger:  cron "5 * * * *"
-
-Steps:
-  1. Run PowerQuery: 09_scoring.pq        # writes ueba_family_scores_hourly
-  2. (daily, e.g. 03:00) Run PowerQuery: 10_risk_daily.pq
-  3. Run PowerQuery: 11_alerts.pq         # writes ueba_alerts
-```
-
-## 4. STAR / PowerQuery Alert rule body — file 09 inline
-
-The skill's §"Productionising as a STAR / PowerQuery Alert rule" recommends running scoring **inline in the rule body** rather than reading a pre-computed table. This is because alert evaluation is per-event and must be self-contained (1 000 rows / 1 MB output cap).
-
-Below is the rule body that detects an auth anomaly inline, ready to paste into a PowerQuery Alert rule. Repeat the pattern for each family.
-
-```powerquery
-// === STAR Alert: UEBA-Auth-Anomaly ===
-// Fires when a user's hourly auth_total z-score against their entity baseline
-// AND peer baseline both exceed 3.0, or value exceeds q99.
-
-let live =
-  (
-    | filter class_uid == 3002
-    | parse '"username": "$entity_id{regex=[^"]+}$"' from message
-    | group value = count() by entity_id, hour_ts = timebucket('1 hour')
-    | filter entity_id = *
-    | filter hour_ts >= now() - 1h
-    | extend entity_type = "user", feature_name = "auth_total"
-  );
-
-let peer_map = dataset 'config://datatables/ueba_peer_membership';
-
-live
-| lookup mu, sigma, q99 from ueba_baselines_entity
-    by entity_type = entity_type, entity_id = entity_id, feature_name = feature_name
-| join kind=leftouter peer_map on entity_type, entity_id
-| lookup mu_p = mu, sigma_p = sigma, q99_p = q99 from ueba_baselines_peer
-    by peer_id = peer_id, feature_name = feature_name
-| extend
-    z_self = if(coalesce(sigma,  0.0) > 0, (value - mu)   / sigma,   0.0),
-    z_peer = if(coalesce(sigma_p,0.0) > 0, (value - mu_p) / sigma_p, 0.0),
-    over_q99      = if(coalesce(q99,  -1.0) >= 0 and value > q99,   1, 0),
-    over_q99_peer = if(coalesce(q99_p,-1.0) >= 0 and value > q99_p, 1, 0)
-| filter z_self >= 3.0 or z_peer >= 3.0 or over_q99 = 1 or over_q99_peer = 1
-| columns entity_id, hour_ts, value, mu, sigma, q99, mu_p, sigma_p, q99_p,
-          z_self, z_peer, over_q99, over_q99_peer
-```
-
-Severity tiering inside the alert:
-
-```powerquery
-| extend severity = case(
-      max_of(abs(z_self), abs(z_peer)) >= 5 or over_q99 + over_q99_peer = 2, "high",
-      max_of(abs(z_self), abs(z_peer)) >= 3,                                  "medium",
-                                                                              "low")
-```
-
-## 5. End-to-end smoke test
-
-After deploying the workflows, populate at least one hourly slice:
-
-```powerquery
-// Run the auth feature extractor for the last hour and verify it landed
-serverHost = 'avelios-medical' or serverHost = 'omniconnect'
-| filter class_uid == 3002
-| parse '"username": "$entity_id{regex=[^"]+}$"' from message
-| parse '"outcome": "$outcome{regex=[^"]+}$"' from message
-| group auth_total = count(), auth_fail = count(outcome == "failure")
-    by hour_ts = timebucket('1 hour'), entity_id
-| filter entity_id = *
-| extend entity_type = "user", family = "auth"
-| union
-  ( ... | columns entity_id, hour_ts, feature_name = "auth_total", value = auth_total ),
-  ( ... | columns entity_id, hour_ts, feature_name = "auth_fail",  value = auth_fail  )
-| savelookup 'ueba_features_hourly', 'merge'
-```
-
-Then read back:
-
-```powerquery
-dataset 'config://datatables/ueba_features_hourly'
-| filter hour_ts >= now() - 2h
-| group ct = count() by family, feature_name
-| sort -ct
-```
-
-If you see rows here, the pipeline works.
-
-## 6. Files changed vs the original pack
-
-| File | Was | Now |
-|---|---|---|
-| 01–05, 12 | `writeto datatable("ueba_features_hourly", mode="append")` | `savelookup 'ueba_features_hourly', 'merge'` |
-| 06 | `writeto datatable("ueba_peer_membership", mode="replace")` | `savelookup 'ueba_peer_membership'` |
-| 07 | `datatable("…")` + `writeto … mode="replace"` | `dataset 'config://datatables/…'` + `savelookup '…'` |
-| 08 | same | same |
-| 09 | 6 × `datatable("…")` + 1 × `writeto … mode="append"` | 6 × `dataset 'config://datatables/…'` + 1 × `savelookup '…', 'merge'` |
-| 10 | 2 × `datatable("…")` + `writeto … mode="append"` | 2 × `dataset` + `savelookup '…', 'merge'` |
-| 11 | 2 × `datatable("…")` + `writeto … mode="append"` | 2 × `dataset` + `savelookup '…', 'merge'` |
-| 00 schema doc | (unchanged) | (unchanged — tables are still semantically the same) |
-
-## 7. Why `savelookup` and not `writeto`
-
-`writeto datatable(…)` does not exist in SDL PowerQuery. It was a placeholder name used while the pack was being authored. The verified persistence primitive in the language reference is `savelookup`. There is no separate "datatable" namespace — every persistent table lives under `config://datatables/<name>` and is accessed via `dataset`, `lookup`, or `savelookup`.
-
-This is why the user's read
-
-```
-dataset 'config://datatables/ueba_features_hourly'
-```
-
-returned empty: the writes never happened. With the refactor above, the table is populated on the first run of the nightly workflow.
+- **savelookup overwrite**: do not point two different writers at the same
+  datatable — the second one wipes the first. Always orchestrate from
+  Python so the final write is a single atomic putFile.
+- **15K query limit**: keep any single `/api/powerQuery` body well under
+  15,000 chars. The branch-splitter in `run_pq_combined.py` keeps each
+  call ~1,500 chars.
+- **1000-row response cap**: `/api/powerQuery` caps reads at 1,000 rows.
+  For full datatable reads use `/api/getFile` (already done by
+  `run_ueba_pipeline.py::fetch_table`).
+- **Health of synthetic data**: alerts will be sparse on the seeded fixture
+  until you inject more variance or extend the time window so baselines
+  have enough variance to flag a real outlier.
