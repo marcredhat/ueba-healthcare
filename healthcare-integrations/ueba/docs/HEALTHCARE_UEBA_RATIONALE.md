@@ -8,6 +8,8 @@ It maps each technical artifact to a real-world threat
 scenario in a hospital, clinic, medical care center (MVZ), KIM (Communication in Medicine) connector site, or other
 TI-connected (Telematics Infrastructure) healthcare environment.
 
+
+
 (
 KIM stands for Communication in Medicine within the Telematics Infrastructure (TI). The service enables secure communication via e-mail. eDoctor's letters, eAU, and other medical documents can be easily exchanged between all players (TI participants) in the German healthcare system using KIM. 
 Source: https://www.arvato-systems.com/industries/healthcare-pharma/kim-communication-in-medicine
@@ -15,6 +17,8 @@ Source: https://www.arvato-systems.com/industries/healthcare-pharma/kim-communic
 The telematics infrastructure (TI) is intended to enable secure networking of medical care within Germany. The connection of all doctors' practices and hospitals ensures that medical documents can be sent to the treating doctors quickly and easily -- and especially in a secure way. This should avoid multiple examinations and make the health system more efficient.
 Source: https://www.bsi.bund.de/EN/Themen/Unternehmen-und-Organisationen/Standards-und-Zertifizierung/E-Health/Telematikinfrastruktur/telematikinfrastruktur_node.html
 )
+
+
 
 The pipeline is statistical and unsupervised: per-entity baselines
 (28-day rolling) capture what is **normal for this user / host /
