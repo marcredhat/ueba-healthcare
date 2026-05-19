@@ -2,8 +2,9 @@
 
 This document explains the security rationale behind every feature
 family, every aggregation, and every alert produced by the
-``
-pipeline. It maps each technical artifact to a real-world threat
+pipeline. 
+
+It maps each technical artifact to a real-world threat
 scenario in a hospital, clinic, medical care center (MVZ), KIM (Communication in Medicine) connector site, or other
 TI-connected (Telematics Infrastructure) healthcare environment.
 
